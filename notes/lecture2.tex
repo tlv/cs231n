@@ -1,0 +1,51 @@
+Image classification is a foundational problem in computer vision. The problem statement is as follows: given an image $I$ and a fixed set of classes $C$, select the category $c \in C$ (e.g. ``cat", ``airplane", ``flower", etc.) to which $I$ belongs. Although conceptually simple, there is in fact a very wide gap between the digital representation of an image (a grid of numbers, e.g. $w \times h \times 3$ integers between 0 and 256 for a normal RGB image) and any sort of human-interpretable semantic meaning. To illustrate the difficulty of crossing this gap, consider the following challenges:
+\begin{itemize}
+\item All the pixels in an image change if the camera viewpoint or the lighting changes.
+\item Objects do not necessarily assume the same (physical) shape in every picture - for example, not all pictures of cats will have the cats in the same pose.
+\item Objects can be occluded (partially hidden).
+\item The background could look very similar to the subject (e.g. a polar bear on a white background).
+\item Not all objects of a particular class look exactly alike - for example, a Honda Odyssey and a Lamborghini Aventador are both cars, but they are quite different in terms of appearance.
+\end{itemize}
+Given these challenges, it becomes clear that there's no good way to do this algorithmically in the same way one might sort a list of numbers or find the shortest distance between two points on a graph. One might think that we can try to detect edges and corners and somehow write rules for how we should expect these edges and corners to be arranged in a picture of e.g. a cat, but even if this could be done, such an approach has several limitations:
+\begin{itemize}
+\item The resulting algorithm would likely be quite fragile, and would likely need new adjustments if a new breed of cat were introduced (or a new, particularly feline-looking, breed of dog).
+\item We'd have to write a new algorithm for every single class of object that we want to detect - our knowledge about what cats look like wouldn't transfer over to airplanes or flowers.
+\end{itemize}
+The crux of machine learning is that instead of taking an algorithmic approach, we can take a data-driven approach. Given a large number of images labeled with their correct classes, we can:
+\begin{enumerate}
+\item Train: using the labeled examples (the ``training set"), we can train a model.
+\item Predict: using the trained model, we can predict the labels of new examples.
+\end{enumerate}
+
+\subsection{Nearest neighbor}
+One very simple model is the nearest neighbor model. The train phase of the nearest neighbor model consists simply of memorizing the training set. The predict phase involves comparing the given example to every training example, and selecting the label of the nearest training example.
+
+The notion of ``nearest" requires us to define a distance metric. One possible metric is the L1 distance, or the sum of the absolute differences in the values of each pixel. More formally, supposing pictures $x^{(1)}$ and $x^{(2)}$ are both $w \times h$ and have red, green, and blue values at $i, j$ of $r^{(1)}_{ij}, r^{(2)}_{ij}, g^{(1)}_{ij}, g^{(2)}_{ij}, b^{(1)}_{ij}, b^{(2)}_{ij}$, respectively, then the L1 distance between $x^{(1)}$ and $x^{(2)}$ would be
+$$\sum_{i = 1}^w \sum_{j=1}^w \left| r^{(1)}_{ij} - r^{(2)}_{ij} \right| + \left| g^{(1)}_{ij} - g^{(2)}_{ij} \right| + \left| b^{(1)}_{ij} - b^{(2)}_{ij} \right|.$$
+Another possibility is the L2 distance:
+$$\sum_{i = 1}^w \sum_{j=1}^w \left( r^{(1)}_{ij} - r^{(2)}_{ij} \right)^2 + \left( g^{(1)}_{ij} - g^{(2)}_{ij} \right)^2 + \left( b^{(1)}_{ij} - b^{(2)}_{ij} \right)^2.$$
+One issue with nearest neighbor, however, is that it tends to overfit: while it may perform very well if asked to predict on examples it has seen in the training set, its performance is much worse on new examples that it hasn't seen before. To address this, we can instead look at the $K$ nearest neighbors from the training set (for some fixed value of $K$) and take the label that occurs most frequently among those $K$ training examples. If we think of nearest neighbor as defining decision boundaries which, when crossed, cause the model to make a different prediction, increasing $K$ (with the special case of vanilla nearest neighbor being equivalent to $K = 1$) tends to make the decision boundaries smoother.
+
+Nearest neighbor and its generalization $K$-nearest neighbors, however, don't perform very well on image classification tasks in practice. There are several reasons for this:
+\begin{itemize}
+\item Predicting is very slow, taking $O(N)$ time where $N$ is the number of examples in the training set (often very large for image classification).
+\item Distances between individual pixels is not very semantically meaningful - for example, if I take a black-and-white image of a checkerboard and its negative (flip the value of every pixel), it is essentially still the same image, but the two images would have the highest possible distance! As a less extreme example, I could make a copy of an image very ``far" from the original image just by shifting it a few pixels.
+\item The background of an image might take up more pixels than the subject, but nearest neighbor has no concept of background vs. subject and will weigh the unimportant background pixels equally with the subject pixels.
+\item For nearest neighbor to work well, the training examples need to cover the input space reasonably densely. However, with data as incredibly high-dimensional as images, there is just no way to cover the input space densely.
+\end{itemize}
+
+\subsection{Hyperparameters}
+One might notice that in $K$-nearest neighbors, the value of $K$ needs to be chosen. Such hand-picked parameters (that are not learned automatically via the training process) are called \emph{hyperparameters}. The typical way to select the best hyperparameters is just to try a bunch of settings and compare them, but the method of comparison is important.
+\begin{itemize}
+\item One very wrong way to select hyperparameters is to select the setting that gives the best performance on the training set. Earlier we mentioned a phenomenon called overfitting, and that is exactly what will happen if we select hyperparameters in this way. Note that in the example of $K$-nearest neighbors, $K=1$ will always give the best performance (perfect performance, in fact) on the training set.
+\item A better way is to split one's data into separate training and test sets, and select the setting that yields the best performance on the test set after being trained on the training set. This will give us a model that generalizes better, but doesn't allow us to gauge how well our model would perform on unseen data - even though the test set wasn't used in training the model, it was used to optimize the hyperparameters, and we might not see identical performance on a new test set for which the hyperparmeters were not explicitly optimized.
+\item The standard way is the split our training data into three sets: train, validation, and test. We train the model on the training set, use the validation set to select hyperparameters, and report our results on the test set.
+\item One other approach is cross-validation: we split the training + validation data into $n$ folds, and we retrain the model $n$ times with each hyperparameter setting, once with each fold serving as the validation set, and average the results. This can help us select the best hyperparameters more ``fairly", but is not so practical if we are training a large model.
+\end{itemize}
+
+\subsection{Linear classifiers}
+A linear classifier is a type of \emph{parametric model}, meaning that the training process learns a set of parameters $W$ which are then used in a pre-defined function $f$ to make predictions $\hat{y}$ for an input $x$ according to $f(x, W) = y$. Conceptually, rather than memorizing the training set as in nearest neighbor, a parametric model attempts to summarize its knowledge of the training set in the parameters $W$. For a linear model, $x$ would be a vector, while $W$ would consist of a matrix $\theta$ and a \emph{bias vector} $b$ so that $f(x, W) = Wx + b$. 
+
+As a concrete example, we can consider the problem of classifying images in the image classification dataset CIFAR-10. This dataset consists of $32 \times 32$ color images that need to be classified into one of 10 categories. This means that $x$ would be of dimension $32 \cdot 32 \cdot 3 \times 1 = 3072 \times 1$ (3 for the red, green, and blue channels) and $y$ would be of dimension $10 \times 1$ (1 score per class, pick the class with the highest score). $b$ would then need to be $10 \times 1$ as well, and $W$ would need to be $10 \times 3072$. 
+
+However, it turns out that even linear classifiers are not very effective at image classification. We can visualize $W$ by projecting each row of it back into a $32 \times 32$ image, and if we do this with a linear classifier trained on CIFAR-10, we see that each row is essentially an arithmetic mean of all the images in the corresponding class (there are 10 rows, one per class). Doing this would show, for example, that all that the model learned about the appearance of airplanes is that pictures of airplanes tend to have blue backgrounds! In addition, linear classifiers can only learn linearly separable decision boundaries - what this means is that if we plotted each image as a point in 3072-dimensional hyperspace, the model would only be able to learn to classify images based on which side of a straight 3071-dimensional hyperplane they fall on. While it would be able to find the best hyperplane pretty effectively, it's not hard to think of many situations where a simple hyperplane would not be sufficient to distinguish examples of one class from those of another class.
