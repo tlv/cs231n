@@ -17,7 +17,7 @@ $$L\left(f\left(x_i, W\right), y_i\right) = -\log\left(\frac{e^{s_{iy_i}}}{\sum_
 The intuition behind this one is that:
 \begin{itemize}
 \item The term inside the log represents the model's predicted probability that the label $y_i$ is correct given the input $x_i$. Replacing $y_i$ with any class $k$ in that term actually gives the model's predicted probability that the label $k$ is correct given the input $x_i$. Note that the formulation guarantees that the predicted probability will be between 0 and 1, and that the probabilities across all the classes sum to 1.
-\item We want to maximize the predicted probability of the correct class, which is equivalent to minimizing its log.
+\item We want to maximize the predicted probability of the correct class, which is equivalent to minimizing its negative log.
 \end{itemize}
 
 \subsection{Regularization}
