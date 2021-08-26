@@ -1,0 +1,49 @@
+\subsection{Loss functions}
+A \emph{loss function} is some function that quantifies how bad a model's prediction is. The utility of such a function is that it allows us to unambiguously say that one prediction is better than another, or (say, averaging over many predictions) that one model is better than another. Given this notion, we can then try to find the best model (or the best parameterization of a model), as we can now make objective comparisons. The process of doing this is known as \emph{optimization}.
+
+More formally, given a model $f$ parameterized by $W$ and a dataset of examples $\{(x_i, y_i)\}_{i=1}^N$ where the $x_i$ are the model inputs and the $y_i$ are the labels, we can define some loss function $L(f(x, W), y)$ and calculate the overall loss $\mathcal{L}$ of the model over the entire dataset as
+$$\mathcal{L} = \frac{1}{N}\sum_{i=1}^N L\left(f\left(x_i, W\right), y_i\right).$$
+Optimization then refers to any method of attempting to find the $w$ that minimizes $\mathcal{L}$.
+
+An example of a common loss function for multiclass classification (the task associated with CIFAR-10) is multiclass SVM loss. In this case, letting $x_i$ represent inputs, $y_i$ represent labels, and $s_i = f(x_i, W)$ represent the vector of scores (one per class) produced by the model, our loss function is then
+$$L\left(f\left(x_i, W\right), y_i\right) = \sum_{j \ne y_i} \max\left(0, s_{ij} - s_{iy_i} + 1\right),$$
+where $j$ iterates over all the different classes and $s_{ij}$ denotes the $j$-th element of $s_i$. In English, what this says is that:
+\begin{itemize}
+\item We want $s_{iy_i}$ (the score for the correct class) to exceed all $s_{ij}$ with $j\ne y_i$ (the scores for the incorrect classes) by at least 1. As long as this holds, we don't care.
+\item If $s_{iy_i}$ does not exceed some $s_{ij}$ with $j\ne y_i$ by at least 1, we want to penalize the model by an amount in proportion to the extent to which this does not hold.
+\end{itemize}
+Another example (also for multiclass classification) is softmax loss. Defining all our variables identically as before, the softmax loss is defined as
+$$L\left(f\left(x_i, W\right), y_i\right) = -\log\left(\frac{e^{s_{iy_i}}}{\sum_j e^{s_{ij}}}\right)$$
+The intuition behind this one is that:
+\begin{itemize}
+\item The term inside the log represents the model's predicted probability that the label $y_i$ is correct given the input $x_i$. Replacing $y_i$ with any class $k$ in that term actually gives the model's predicted probability that the label $k$ is correct given the input $x_i$. Note that the formulation guarantees that the predicted probability will be between 0 and 1, and that the probabilities across all the classes sum to 1.
+\item We want to maximize the predicted probability of the correct class, which is equivalent to minimizing its log.
+\end{itemize}
+
+\subsection{Regularization}
+Note, however, that the above formulations of loss functions only incentivize the model to fit the given dataset well. If we optimize our models to minimize the value of a loss function formulated in such a way, one problem we will often run into is \emph{overfitting}, where our model ends up fitting the training dataset extremely well by twisting itself in very complicated ways, but makes very inaccurate predictions on new, unseen data. We can combat this issue using \emph{regularization}.
+
+Regularization essentially means anything that encourages model simplicity, and one common form of regularization is to add a term $\lambda R(W)$ to the loss $\mathcal{L}$ that penalizes the model based on how ``complex" it is (defined in terms of the function $R$ and the parameters $W$). ($\lambda$ here is a tunable hyperparameter that trades off between how much we value model simplicity vs. the ability to better fit the training data.) A few common regularization methods are:
+\begin{itemize}
+\item L2 loss: $R(W) = \sum_{w \in W} w^2$
+\item L1 loss: $R(W) = \sum_{w \in W} |w|$
+\item Elastic net (L1 + L2): $R(W) = \sum_{w \in W} \beta w^2 + |w|$ (here $\beta$ is another hyperparameter)
+\item More advanced techniques (some of these will be covered in later lectures): dropout, max norm regularization, batch normalization, stochastic depth
+\end{itemize}
+
+\subsection{Gradient descent}
+Earlier we mentioned that optimization refers to the process of finding a model that minimizes our chosen loss function. One common and reasonably effective optimization method is gradient descent. Note that for most reasonable loss functions, we can calculate the gradient $\overrightarrow{\nabla}_W\mathcal{L}$ of the loss $\mathcal{L}$ with respect to the model parameters $W$. Then we can simply ``step downwards" to a (likely) lower value of $\mathcal{L}$ by moving $W$ a little bit in the direction opposite the gradient:
+$$W \leftarrow W - \alpha \overrightarrow{\nabla}_W\mathcal{L},$$
+where $\alpha$, called the \emph{learning rate}, is another tunable hyperparameter.
+
+Note that implementing $\overrightarrow{\nabla}_W\mathcal{L}$ can be fairly error-prone, so one common way of testing the implementations is to do a \emph{gradient check}: to approximate the gradient numerically via finite differences, and checking that the approximation is close to the analytic value. (The reason, however, that we typically use an analytic gradient in actual gradient descent is that the numeric approximation can be very slow to calculate, especially when we have a lot of parameters $W$ and/or when the loss function is complicated.)
+
+Note also that gradient descent as formulated above requires calculating the gradient $\overrightarrow{\nabla}_W\mathcal{L}$ over the entire dataset, as $\mathcal{L}$ is defined over the entire dataset. This can be quite slow in practice when we have a large training set, so we typically use \emph{stochastic gradient descent} instead, where we approximate $\mathcal{L}$ by the average loss over a minibatch of e.g. 1024 training examples. This allows us to calculate our gradients and update our model much more quickly.
+
+\subsection{Linear classifiers and image classification}
+In lecture 2, we mentioned that linear classifiers don't perform so well at image classification. But this raises the question of how people approached the problem of image classification before CNNs became viable. The answer is that instead of feeding raw pixel data into a linear classifier, which doesn't work so well, people instead first calculated intermediate featurized representations of images and then fed those features to a linear model that would make classification predictions. Some examples of these features are:
+\begin{itemize}
+\item Color histogram (relative frequences of different colors in the image)
+\item Histogram of oriented gradients. We calculate this by dividing hte image into small segments (say, $8 \times 8$), computing the dominant ``edge directions" in each segment, creating a histogram of directions for each small segment, and then rolling all of this data up into a single vector.
+\item Bag of words. We can build some sort of visual ``vocabulary" by taking small crops of many images and clustering the crops, and then look at how often each ``word" appears in an input image. (In this case, we represent words as approximations rather than exact values, as an exact value match would probably not find anything in most cases.)
+\end{itemize}
