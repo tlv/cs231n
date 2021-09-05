@@ -1,0 +1,102 @@
+\subsection{Computational graphs and backpropagation}
+A computational graph is a visual way to represent a function that makes it easy to find gradient values analytically. It essentially breaks the function up into a composition of simple components as nodes connected by edges, each of which is easy to differentiate. In such a graph, each node represents an operation, and each edge represents the output value of one node (i.e. operation) being routed as an input to another node. The utility of this representation is that it allows us to recursively use the chain rule to calculate the gradient of the output with respect to any of the input or output values in the graph. The usual process for doing so is known as backpropagation.
+
+More formally, suppose we have a node in a computational graph with inputs $x_1, x_2, \dots, x_n$ that performs the operation $f$ and has its output routed as inputs $y_1, y_2, \dots, y_m$ to later nodes. Then letting $L$ be the final output of the computational graph, we have the following for each $x_i, 1 \le i \le n$:
+$$\pd{L}{x_i} = \pd{f(x_1, x_2, \dots, x_n)}{x_i}\sum_{j=1}^m\pd{L}{y_j}.$$
+
+\begin{figure} 
+\centering
+\begin{tikzpicture}[
+    op/.style={shape=circle, draw=black, minimum size=1cm},
+    input/.style={shape=circle, draw=none, minimum size=1cm},
+]
+    \node[input] (w0) at (0, 8) {$w_0$};
+    \node[input] (w1) at (0, 6) {$w_1$};
+    \node[input] (x1) at (0, 4) {$x_1$};
+    \node[input] (w2) at (0, 2) {$w_2$};
+    \node[input] (x2) at (0, 0) {$x_2$};
+    \node[op] (mul1) at (2, 5) {$f_1 = *$};
+    \node[op] (mul2) at (2, 1) {$f_2 = *$};
+    \node[op] (add) at (4, 5) {$f_3 = +$};
+    \node[op] (exp) at (7, 5) {$f_4(x) = 1 + e^{-x}$};
+    \node[op] (inv) at (10, 5) {$f_5(x) = 1/x$};
+    \node[input] (out) at (13, 5) {$L$};
+\path[->]
+    (w0) edge node {} (add)
+    (w1) edge node {} (mul1)
+    (x1) edge node {} (mul1)
+    (w2) edge node {} (mul2)
+    (x2) edge node {} (mul2)
+    (mul1) edge node {} (add)
+    (mul2) edge node {} (add)
+    (add) edge node {} (exp)
+    (exp) edge node {} (inv)
+    (inv) edge node {} (out)
+;
+\end{tikzpicture}
+\caption{The function $\left(1 + e^{-\left(w_0 + w_1x_1 + w_2x_2\right)}\right)^{-1}$ depicted as a computational graph.}
+\label{fig4-1}
+\end{figure}
+
+As an example, consider the function
+$$L = f(w, x) = \frac{1}{1 + e^{-\left(w_0 + w_1x_1 + w_2x_2\right)}}$$
+(see Figure \ref{fig4-1} for a visualization of the computational graph). Letting $y_i, 1 \le i \le 5$ represent the output of node $f_i$ (in our case, each output is routed to at most one downstream node, so such a definition is unambiguous), we have:
+\begin{align*}
+    \pd{L}{y_5} &= \pd{L}{L} = 1\\
+    \pd{L}{y_4} &= \pd{y_5}{y_4} \pd{L}{y_5} = \ln y_4 \pd{L}{y_5}\\
+    \pd{L}{y_3} &= \pd{y_4}{y_3} \pd{L}{y_4} = \left(-e^{-y_3}\right)\pd{L}{y_4}\\
+    \pd{L}{y_2} &= \pd{y_3}{y_2} \pd{L}{y_3} = 1 \cdot \pd{L}{y_3}\\
+    \pd{L}{y_1} &= \pd{y_3}{y_1} \pd{L}{y_3} = 1 \cdot \pd{L}{y_3}\\
+    \pd{L}{w_0} &= \pd{y_3}{w_0} \pd{L}{y_3} = 1 \cdot \pd{L}{y_3}\\
+    \pd{L}{w_1} &= \pd{y_1}{w_1} \pd{L}{y_1} = x_1\pd{L}{y_1}\\
+    \pd{L}{x_1} &= \pd{y_1}{x_1} \pd{L}{y_1} = w_1\pd{L}{y_1}\\
+    \pd{L}{w_2} &= \pd{y_2}{w_2} \pd{L}{y_2} = x_2\pd{L}{y_2}\\
+    \pd{L}{x_2} &= \pd{y_2}{x_2} \pd{L}{y_2} = w_2\pd{L}{y_2}\\
+\end{align*}
+Each $y_i$ and each partial of $L$ with respect to the $y_i$ can be expanded back into an expression in terms of the inputs, but if our goal is to compute gradient values (rather than symbolic gradients), it's more straightforward to:
+\begin{itemize}
+    \item Starting from the left side of the computational graph, compute the intermediate values, i.e. the $y_i$, by applying each node's operation to its inputs in sequence. This process is known as \emph{forward propagation}.
+    \item Then, starting from the right side of the computational graph, compute the values of partials with respect to the $y_i$. Note that in the above example (as in general), each gradient $\partial L / \partial y_i$ can be written in terms of $y_i$ and the gradients with respect to the nodes after $y_i$ in the graph. This process is known as \emph{backpropagation}.
+\end{itemize}
+In this way, we can get the gradient values of $L$ with respect to the inputs.
+
+Oftentimes when working with vectorized code, our inputs and outputs of various nodes will be vectors rather than scalars. The logic is the same, but we would need to replace our scalar partial derivatives
+$$\pd{f(x_1, x_2, \dots, x_n)}{x_i}$$
+with Jacobians
+$$\pd{\left(f_1(\vec{x}_1, \vec{x}_2, \dots, \vec{x}_n), \dots, f_m(\vec{x}_1, \vec{x}_2, \dots, \vec{x}_n)\right)}{\vec{x}_i} 
+= \left[ 
+\begin{array}{ccc}
+    \pd{f_1}{\vec{x}_i^{(1)}} & \dots & \pd{f_1}{\vec{x}_i^{(d_i)}} \\
+    \vdots & \ddots & \vdots \\
+    \pd{f_m}{\vec{x}_i^{(1)}} & \dots & \pd{f_m}{\vec{x}_i^{(d_i)}} \\
+\end{array}
+\right],$$
+where now each $x_i$ has become a vector $\vec{x}_i$ with dimension $d_i$, and $f$ is now a vector-valued function (with $m$-dimensional output) that takes vector inputs.
+
+Note that the node boundaries in a computational graph are somewhat arbitrary; in Figure \ref{fig4-1} we could just has well have combined $f_1, f_2, f_3$ into a single node $g(w_0, w_1, x_1, w_2, x_2) = w_0 + w_1x_1 + w_2x_2$. The choice of node boundary is just a tradeoff between concision of the graph and the ease of calculating analytic node-local partial derivative values.
+
+\subsection{Neural networks}
+Neural networks are a highly diverse class of computational structures, but at their core they are essentially just stacks of simple vectorized operations (often linear transforms) with nonlinear activations in between. Structured correctly, neural networks can be used as parametric models for machine learning (and that is their most common use today). A simple example of a neural network is one with parameters $W_1, W_2$ (matrices) and input $x$ (vector) and performing the computation
+$$f(x | W_1, W_2) = W_2\max\left(0, W_1x\right).$$
+We can say that this neural network has two linear layers (the multiplications by $W_1$ and $W_2$), and that the function $g(y) = \max(0, y)$ applied after the first layer $W_1x$ is the \emph{activation function} on that layer. 
+
+Note also that neural networks fit nicely into the computational graph framework - each layer and each activation function can be a node in a computational graph. This is where computational graphs really shine: they allow us to easily calculate the gradient values of the output (or any loss function we may want to apply on top of the output) with respect to the parameters (in the above example, $W_1$ and $W_2$), which enables us to efficiently perform gradient descent to optimize the parameters over a collection of training data.
+
+A few vocabulary words when talking about neural networks:
+\begin{itemize}
+    \item The \emph{input layer} of a neural network consists simply of the input values that are fed into the network. Note that the input layer does not include the neural network's parameters. In our example above, this would simply be $x$.
+    \item The \emph{output layer} of a neural network refers to its final output. In our example this would be $f$, i.e. $W_2\max\left(0, W_1x\right)$.
+    \item A \emph{hidden layer} in a neural network refers to any layer that is not the input or output layer. The definition of a layer is somewhat arbitrary, but in most cases a layer refers to a vector that is the result of a matrix multiplication (or a group of parallel matrix multiplications) and an activation function on a previous layer. In our example above, $\max(0, W_1x)$ would be considered to be a hidden layer.
+    \item When people refer to the layers as being ordered (e.g. ``the third hidden layer"), the ordering starts from the input layer and ends with the output layer. So the first hidden layer would be the one immediately after the input layer, and last hidden layer would be the one immediately before the output layer.
+    \item A neural network with an input layer, an output layer, and $n-1$ hidden layers is generally called an $n$-layer neural network. (The input layer ``doesn't count".) Sometimes it is also called an $(n-1)$-hidden-layer neural network.
+\end{itemize}
+\subsubsection{The importance of nonlinearity}
+Here I will try to offer an informal but intuitive explanation of why the nonlinear activation functions are important. I've never really been satisfied with the terse orthodox explanation, which is that a neural network without nonlinear activations would collapse into a single linear transform. While this proves that a neural network without nonlinearities would not represent any improvement over a simple linear model, it doesn't do a good job of providing intuition as to how or why the nonlinearities would actually be of any help, which is what I will try to do here.
+
+Consider again the simple 2-layer neural network
+$$f(x|W_1, W_2) = W_2\max\left(0, W_1x \right).$$
+Recall the CIFAR-10 dataset (an image classification dataset consisting of $32 \times 32$ images that are classified into 10 categories) and the difficulties of training an effective linear classifier on this dataset (each row of $W$ in a linear classifier $f(x|W) = Wx$ just ends up being an arithmetic mean of the images of the class corresponding to that row). For example, consider the class ``horse". If we train a linear classifier $f(x|W) = Wx$, where $x$ is a vector of dimension $32 \cdot 32 \cdot 3 = 3072$ ($32\times 32$ picture with 3 color channels) and $W$ is a matrix of dimension $10 \times 3072$ (10 classes by 3072 elements in $x$), on CIFAR-10, we'd notice that a visualization of the row of $W$ (i.e. taking the 3072-dimensional vector of that row's entries and turning it back into a $32 \times 32$ color image) corresponding to the ``horse" class would look like an animal with a horse body and a horse head on each end of the body, because the model averaged right-facing horses and left-facing horses together (just to be clear, this is what you would actually observe).
+
+However, suppose now that we train a 2-layer neural network $f(x|W_1, W_2) = W_2\max \left(0, W_1x\right)$, where $x$ is the same 3072-dimensional vector, $W_1$ is a $20 \times 3072$ matrix, and $W_2$ is a $10 \times 20$ matrix. Now the model can (for sake of example, it may not actually do this when trained) separately detect left and right-facing horses in the first layer $W_1x$ and then combine the two intermediate scores in the final result $W_2\max \left(0, W_1x\right)$.
+
+To see why the nonlinear activation function (here, $g(x) = \max(0, x)$) is important, note that the score for left-facing horses in the first layer $W_1x$ may be very negative when the score for right-facing horses is very positive, and vice versa (again, just for sake of example - maybe this isn't what actually happens when you train the model). This means that if we try to combine them linearly in the final layer, the model wouldn't really be able to effectively detect the presence of one or the other, as the scores would essentially cancel each other out. But by inserting our activation function $g$, the model can simply throw away the negative score (it would be replaced by 0), and the final layer would be able to detect the presence of either a left-facing horse \emph{or} a right-facing horse without having to deal with the negative score from the opposite-facing horse.
