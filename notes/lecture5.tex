@@ -1,0 +1,80 @@
+Convolutional neural networks (CNNs) are so named after their use of \emph{convolutional layers}. Before digging into what those are, however, we will first introduce the other building blocks that typically occur in 2017-era CNNs. A typical image classification architecture consists of:
+\begin{itemize}
+\item A large number of repetitions of:
+\begin{itemize}
+    \item 1-5 repetitions of \emph{convolutional layers} with ReLU activations (ReLU is short for Rectified Linear Unit, which is just the function $f(x) = \max(x, 0)$.)
+    \item Followed by a \emph{pooling layer}
+\end{itemize}
+\item Followed by a few (0-2) fully-connected layers with ReLU activations (A fully-connected layer is the ``standard" kind of layer in a neural network, where one layer is transformed into the next via a simple matrix multiplication and activation function; the name comes from the fact that every neuron's value in the previous layer is an input, via the matrix multiplication, to the value of every neuron in the next layer)
+\item With softmax loss at the end.
+\end{itemize}
+A more concise way to write this is:
+$$((CONV + RELU) \cdot N + POOL) \cdot M + (FC + RELU) \cdot K + SOFTMAX.$$
+The new concepts here are the convolutional layer and the pooling layer. We will cover these in turn.
+\subsection{Convolutional layers}
+Convolutional layers are useful in computer vision for their spatial-structure-preserving properties. 
+
+When we run an image through a fully-connected layer, we lose all spatial information about the image. Each pixel is treated independently by the matrix multiplication, and there is nothing inherent in the computation that could encode, for example, the spatial proximity of two pixels in the input. Another way to think about this is that you could permute the pixels of the input images any way you want, and as long as you apply the same permutation to every image, a model using fully-connected layers would react no differently to any choice of permutation versus any other, implying that all that the model ``sees" is a soup of pixels rather than a coherent image. 
+
+A convolutional layer solves this problem by convolving position-invariant and trainable 2-dimensional \emph{filters} over a 2-dimensional image, where each filter operates over a small spatial cluster of pixels, and produces a 2-dimensional output which preserves the spatial structure of the image. Because a filter only ``sees" groups of the pixels that are close to each other and because the output is kept spatially consistent with the input image, a convolutional layer is able to inherently encode some notion of what things are close to each other and where they are.
+\begin{itemize}
+    \item Strictly speaking, ``pixel" and ``image" are not the right words here, as a convolutional layer could be operating over the output of an earlier convolutional layer rather than operating directly over the input image, but the idea is the same regardless.
+\end{itemize}
+
+We will now define more precisely what a filter is. A filter $F$ has dimensions (height, width, depth) $h_f \times w_f \times d_f$, is \emph{convolved} over an input $M_1$ having dimensions $H_1 \times W_1 \times D_1$ (the input is logically 2-dimensional, but e.g. in the case of a 2D RGB image we need a depth of 3 to account for the 3 color channels) with \emph{padding} $p$ and \emph{stride} $s$, and produces an output $M_2$ having dimensions $H_2 \times W_2$ (the lack of a depth dimension here is intentional). Each of the entries in the filter is a trainable parameter of the model. The output $M_2$ is then passed elementwise through an activation function to produce an \emph{activation map}, which serves as the input to the next layer in the CNN. Defining the terms used here:
+
+\begin{itemize}
+    \item Convolving the filter means to apply the filter at each spatial position $(h, w)$ in the input.
+    \item Applying the filter at a position $(h, w)$ of the input means to compute the value
+        $$b + \sum_{i=1}^{h_f}\sum_{j=1}^{w_f}\sum_{k=1}^{d_f} F^{(i, j, k)} M_1^{(h+i-1, w+j-1, k)},$$
+        where $b$ is a trainable bias term of the filter. This value becomes one of the values in $M_2$. Although the exact indices in $M_2$ depend on the padding and stride (defined below), the spatial arrangements of the input and output are kept identical: adjacent positions at which the filter is applied in the input become adjacent values in the output, and their relative orientation (left/right/up/down) is preserved.
+        \begin{itemize}
+            \item Note that this definition implies that $d_f = D_1$; this is intentional and in fact required.
+            \item In practice, we almost always see $w_f = h_f$, and the most common values are 1, 3, 5, and 7.
+        \end{itemize}
+    \item Stride refers to how far we move (in terms of pixels/indices) when going from one application of the filter to the next. Stride 1 means we apply the filter at every index/pixel; stride 2 means we apply the filter at every other index/pixel, etc. Stride is typically either 1 or 2.
+    \item Padding refers to adding a border of zeroes around the input (along the height and width dimensions and extending fully through the depth dimension). This is typically done to preserve the height and width of the activation maps from one layer to the next (if e.g. you convolve a $3 \times 3 \times d$ filter over a $32 \times 32 \times d$ input with stride 1, you will end up with a $30 \times 30$ output, but padding a single layer of zeroes, i.e. $p=1$, around each side will give you a $32 \times 32$ output instead). Padding is usually just set to whatever value will exactly preserve (for stride 1) or halve (for stride 2) the dimensions of the input.
+    \item Note that $H_2$ and $W_2$ can be determined exactly from $H_1, W_1, h_f, d_f, p, s$. The formulas are:
+        \begin{align*}
+            H_2 &= \frac{H_1 + 2p - h_f}{s} + 1\\
+            W_2 &= \frac{W_1 + 2p - w_f}{s} + 1.
+        \end{align*}
+        \begin{itemize}
+            \item Note that this formula implies that horizontal and vertical stride are equal to the same value $s$, and that the padding $p$ is the same on all four sides of the input (the factor of 2 in $2p$ comes from the fact that the padding is on both the left and right sides, and on both the top and bottom of the input). While this is not strictly necessary, it is nearly always true in practice.
+            \item This formula also implies that $s$ divides evenly into both $H_1 + 2p - h_f$ and $W_1 + 2p - w_f$. What divisibility by $s$ means is that the filter should ``fit evenly" when convolved over the input with stride $s$: if we start with the filter at the leftmost position and move $s$ pixels to the right at a time, it should cover the rightmost pixel of the (padded) input once it reaches its own rightmost possible position, as opposed to ending up somewhere where there are additional pixels to the right that have not been operated over by the filter, but from where the filter cannot be moved over $s$ more pixels without its own right edge overshooting the right edge of the (padded) input. (Same for the vertical direction.) Again, this is not strictly necessary, but is nearly always true in practice.
+        \end{itemize}
+    \item In addition, for an application of a filter at position $(h, w)$ in the input, we can compute the position $(h', w')$ of the resulting value in the output given the padding $p$ and stride $s$:
+        \begin{align*}
+            h' &= \frac{h + p - 1}{s} + 1\\
+            w' &= \frac{w + p - 1}{s} + 1.
+        \end{align*}
+        Again, the implications about divisibility by $s$ are intentional. (In these equations, the indices $(h, w)$ are considered to start at 1 at the boundaries of the original input; $h$ and $w$ can potentially take values less than 1 on the boundary of the padding.)
+    \item A convolutional layer will typically include multiple filters, all with the same dimensions, padding, and stride. Each filter produces an activation map of dimension $H_2 \times W_2$, and so a convolutional layer with $D_2$ filters produces an output of dimension $W_2 \times H_2 \times D_2$. The number of filters is usually a power of 2, and typical values start at 32 and go as high as your hardware can handle/as long as you are willing to wait for your model to finish training.
+\end{itemize}
+
+With these definitions settled, it may be helpful to re-read the beginning of this section, which laid out the big picture without defining anything precisely.
+
+One thing to note is that the convolution takes place only over the height and width dimensions, and not the depth dimension, of the input. This is because the height and width indices encode useful spatial information, while the depth does not - in the initial input layer, each index in the depth dimension simply represents a different color channel, while in subsequent layers, each index in the depth dimension is simply an activation map produced by a different filter. The ordering of these indices is meaningless (e.g. it doesn't make any logical difference whether red or green comes first in the input), and so each index is treated identically and independently by the model, i.e. the model is indifferent to their permutations - the only thing that matters is that the permutations are kept consistent. For the same reason, we never pad the depth dimension - only the height and width dimensions.
+
+A note on intuition: recall that a CNN has multiple convolutional layers, with each one's output providing the input for the next one. If we visualize the filters in the CNN (i.e. visualize the patterns in the input image that would maximize the output values of each filter), we would see that filters in earlier (closer to the input) layers tend to ``detect" (i.e. produce the highest values when they encounter) simple things like edges in particular directions and patches of certain colors, and that filters in later layers tend to detect higher-level visual elements, like the presence of an eye or a door.
+
+Lastly, an additional benefit of convolutional layers, totally unrelated to their spatial awareness, is that they have far fewer trainable parameters than fully-connected layers, which dramatically improves training efficiency. For example, if our CNN has a $128 \times 128$ RGB input, a $5 \times 5$ filter would contain only $3 \times 25 + 1 = 76$ parameters (3 colors by 25 pixels plus a bias term; note in fact that the number of parameters in the filter is invariant of the size of the input), while a fully-connected layer would require $128 \times 128 \times 3 = 49152$ parameters for every value in the output layer (as many parameters as 646 $5 \times 5$ filters!).
+
+\subsection{Pooling layers}
+
+Compared to convolutional layers, pooling layers are conceptually far simpler. A pooling layer has a height $h$, width $w$, and stride $s$, and essentially downsamples the entries of a $H \times W \times D$ input $M_1$ to produce an $H' \times W' \times D$ output $M_2$ with $H' < H$ and $W' < W$. It does this by applying a pooling function $f$ (which is typically defined to output the max, but is sometimes defined to output the average, of its inputs) to each $h \times w$ area of each activation map in the input, spaced $s$ pixels apart. More formally,
+$$M_2^{(i', j', k)} = f\left(M_1^{(i + i_h, j + j_w, k)},\quad 0 \le i_h \le h - 1, 0 \le j_w \le w - 1\right),$$
+where
+\begin{align*}
+    i' &= \frac{i - 1}{s} + 1 \\
+    j' &= \frac{j - 1}{s} + 1.
+\end{align*}
+Note that pooling layers do not use padding. Typically $h = w = 2$ or 3, and $s = 2$.
+
+The intuition for pooling layers is that activation maps output by convolutional layers conceptually represent the presence of certain visual elements at particular locations in the input image, and that a $2 \times 2$ group of adjacent values in an activation map are just reporting the presence or absence of a visual element in almost the same place in the input image, i.e. they are likely ``seeing" the same thing. This means that we can combine these four values into one without losing much information, which is exactly what pooling does. Now a $2 \times 2$ pooling layer is still different from just using a stride of 2 in the previous convolutional layer - the pooling layer aggregates the information of all four outputs in its vicinity, while using a stride of 2 in the previous convolutional layer would just take one of every 4 outputs, chosen somewhat arbitrarily.
+
+Pooling layers, just like convolutional layers, operate only over the height and width dimensions of their inputs. The reasoning as to why is the same as for convolutional layers - the ordering of the depth indices carries no logical information, so it wouldn't make any sense to pool two different activation maps that happen to be adjacent to each other in the depth dimension.
+
+\subsection{The fully-connected layers at the end}
+
+Given all the advantages of convolutional layers, one might wonder why we need the fully-connected layers at the end. While they are not strictly necessary (some architectures feed the ouptut of the last convolutional or pooling layer, fully connected, straight into the softmax classification layer with no additional fully-connected layers in between), they can be helpful for combining all the visual information extracted by the previous convolutional layers. The last convolutional layer might tell us that there is a fin here or a branch there, but to most effectively classify whether the input image is of a fish, a tree, or something else, we need to combine all the information in some way, and often this is done through a number of fully-connected layers before the final classification.

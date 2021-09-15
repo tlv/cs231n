@@ -91,7 +91,7 @@ A few vocabulary words when talking about neural networks:
     \item A neural network with an input layer, an output layer, and $n-1$ hidden layers is generally called an $n$-layer neural network. (The input layer ``doesn't count".) Sometimes it is also called an $(n-1)$-hidden-layer neural network.
 \end{itemize}
 \subsubsection{The importance of nonlinearity}
-Here I will try to offer an informal but intuitive explanation of why the nonlinear activation functions are important. I've never really been satisfied with the terse orthodox explanation, which is that a neural network without nonlinear activations would collapse into a single linear transform. While this proves that a neural network without nonlinearities would not represent any improvement over a simple linear model, it doesn't do a good job of providing intuition as to how or why the nonlinearities would actually be of any help, which is what I will try to do here.
+Here I will try to offer an informal but intuitive explanation of why the nonlinear activation functions are important (mostly derived from an explanation that was given in the lecture). I've never really been satisfied with the terse orthodox explanation, which is that a neural network without nonlinear activations would collapse into a single linear transform. While this proves that a neural network without nonlinearities would not represent any improvement over a simple linear model, it doesn't do a good job of providing intuition as to how or why the nonlinearities would actually be of any help, which is what I will try to do here.
 
 Consider again the simple 2-layer neural network
 $$f(x|W_1, W_2) = W_2\max\left(0, W_1x \right).$$
