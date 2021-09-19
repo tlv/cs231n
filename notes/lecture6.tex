@@ -1,0 +1,124 @@
+This lecture covers several practical tips for training neural networks.
+
+\subsection{Activation functions}
+There are many different activation functions that can be used as the nonlinearity in a neural network. The following are several commonly used ones.
+\subsubsection{Sigmoid}
+In general, the sigmoid does not actually work very well, and is in fact quite bad for image classification (e.g. some 2015-era ImageNet-SOTA CNN architectures will totally fail to train if the sigmoid activation is used). However, it's one of the earliest activation functions that ML practitioners originally used. The function is
+$$\sigma (x) = \frac{1}{1 + e^{-x}}.$$
+As an activation function, the sigmoid has 3 major shortcomings:
+\begin{itemize}
+\item If $|x|$ exceeds 10 or so, the derivative of this function becomes vanishingly small (around $4.5 \times 10^{-5}$ for $x = \pm 10$). This is problematic because we will be multiplying by this derivative many times when computing gradients in our neural net - e.g. if we have a neuron computing $a = \sigma(w^Tx + b)$ in a model with final loss $L$, we will have
+$$\pd{L}{w_i} = \pd{L}{a} \pd{a}{w_i} = \left(\pd{L}{a}\right)x_i\sigma'(w^Tx + b),$$
+which will be very small if $\sigma'(w^Tx + b)$ is very small. This is not ideal because it will cause our gradient updates to be small, and our model to train slowly.
+\item The sigmoid function always outputs in the range $(0, 1)$ - in particular, its outputs are all positive. This is also not ideal - consider again our example neuron that calculates $a = \sigma(w^Tx + b)$. Our gradients with respect to the weights $w_i$ are (again)
+$$\pd{L}{w_i} = \pd{L}{a} \pd{a}{w_i} = \left(\pd{L}{a}\right)x_i\sigma'(w^Tx + b).$$
+Now note that if the $x_i$ are outputs of a sigmoid activation in a previous layer, they will all be positive, which would mean that all the gradients $\partial L/\partial w_i$ would be the same sign (the other quantities in the above expression are invariant with respect to $i$). This means that our gradient updates will always move all the $w_i$ in the same direction (all moving positively or all moving negatively), which is unlikely to be optimal; there is no reason why the most direct path to the nearest minimum would be a direction along which the $w_i$ are all changing positively or all changing negatively. Gradient descent would still be able to eventually get us to the right spot, but the path will likely look jagged and inefficient rather than smooth and direct.
+\item Lastly, the exponential function in the sigmoid is somewhat expensive to compute.
+\end{itemize}
+\subsubsection{tanh}
+The $\tanh$ function is very similar to the sigmoid function:
+$$\tanh(x) = \frac{e^{2x} - 1}{e^{2x} + 1} = 2\sigma(2x) - 1.$$
+It solves the second problem of the sigmoid - the outputs of $\tanh$ are in the range $(-1, 1)$ rather than the rante $(0, 1)$ - but shares the other two issues of vanishing gradients and high computational demands.
+\subsubsection{ReLU}
+The ReLU, or Rectified Linear Unit, is a very popular activation that works quite well in practice. It has a very simple formulation: $f(x) = \max(0, x)$. It has several advantages:
+\begin{itemize}
+\item There is no issue with vanishing gradients; the derivative of ReLU is either 1 (for $x > 0$) or 0 (for $x < 0$). (The 0 gradient for negative input sometimes causes issues though; we will return to this in a bit.)
+\item Being very logically simple, it's fast to compute.
+\item In practice, models using ReLU activation converge faster than models using sigmoid or $\tanh$ activation.
+\end{itemize}
+However, it has two drawbacks as well:
+\begin{itemize}
+\item As with sigmoid, its outputs are all nonnegative.
+\item The derivative of ReLU is 0 for negative inputs. This means that if a neuron computing $a = f(w^Tx + b)$ (in a network with final loss $L$) ends up in a place where $w^Tx + b < 0$ for every example $x$ in the training set, its parameters $w$ will never update, as the gradients
+$$\pd{L}{w_i} = \left(\pd{L}{a}\right) x_i f'(w^Tx + b), \quad \pd{L}{b} = \left(\pd{L}{a}\right) f'(w^Tx + b)$$
+will all be zero if $w^Tx + b < 0$. (Note: if this neuron is in an intermediate layer, it is possible that an update in an earlier layer shifts the distribution of the inputs to this neuron, so that we do get $w^Tx + b > 0$ for some training example at a later time. But this isn't something we can count on in general.) This can happen due to an unlucky initialization, or it can also happen during training if a gradient update knocks our parameters $w$ into a bad place that causes $w^Tx + b < 0$ for all later training examples $x$. This phenomenon is commonly called the ``dead ReLU" phenomenon.
+\begin{itemize}
+\item People sometimes initialize bias parameters to small positive values to try to avoid this issue, but in practice this doesn't seem to yield much benefit generally. (In spite of the dead ReLU issue, ReLU works pretty well.)
+\end{itemize}
+\end{itemize}
+\subsubsection{ReLU generalizations}
+People have also created several generalizations/modifications of ReLU to try to solve the issues of ``standard" ReLU (all outputs are the same sign, dead ReLU). Several of these other activation functions are:
+\begin{itemize}
+\item Leaky ReLU: $f(x) = max(\alpha x, x)$. $\alpha$ is a hyperparameter and is usually set to some small positive value, like 0.01, which solves both the issue of uniform-sign outputs and zero gradients.
+\item Parametric ReLU: same as Leaky ReLU, but $\alpha$ is a trainable parameter instead of a hyperparameter.
+\item Exponential linear unit (ELU):
+\begin{equation*}
+f(x) = 
+\begin{cases}
+x, &\text{if} x > 0,\\
+\alpha(e^x - 1), &\text{if} x \le 0.
+\end{cases}
+\end{equation*}
+ELU also has the problem of (nearly) zero gradients for negative values of $x$ (although only if $|x|$ is large), but has been shown to be more robust to noise than Leaky ReLU and parametric ReLU in some cases.
+\item Maxout: $f(x) = \max(w_1^Tx + b_1, w_2^Tx + b_2, \dots, w_n^Tx + b_n).$ This further generalizes Parametric ReLU, but multiplies the number of parameters in the model, which can make training much more computationally intensive.
+\end{itemize}
+In practice, ReLU with an appropriate learning rate is usually good enough, and these other fancy activation functions are probably not going to be necessary.
+
+\subsection{Data preprocessing}
+Typically, when training neural networks, we want to normalize our inputs so that each one has zero mean and unit variance. Sometimes we can go further and decorrelate the inputs as well, so that every pair of inputs has zero covariance. This smooths out the loss landscape and helps the model converge faster.
+
+However, when training an image processing model, we typically don't do anything to normalize the variances or covariances. This is because the input values are already typically constrained to the range $[0, 255]$ (or some other fixed range) and because diagonalizing the covariance matrix could significantly distort the visual elements in the image (which the filters in CNNs are actually quite good at learning to recognize). Normalizing to zero mean is still important, however - as discussed previously, we don't want our inputs to all be the same sign (recall that this forces all the gradients of the parameters operating on those inputs to be the same sign). Additionally, there are two different methods that are commonly used to calculate the means for normalization:
+\begin{itemize}
+\item Subtracting the mean image from each image. This basically means taking separate R, G, and B averages at each pixel, combining all of these to form a RGB ``mean image", and subtracting that image, per-pixel and per-channel, from each input image.
+\item Subtracting channel averages from each pixel in each image. This means to take global R, G, and B means over all pixels in all input images (so we end up with 3 scalar values at the end), and subtracting the R mean from every R value in every pixel on every image (and analogously for G and B).
+\end{itemize}
+
+\subsection{Initialization}
+A naive way to initialize a neural network would be to set all the weights to zero at the beginning. However, the issue with this is that every neuron in a layer would then be getting the same values during forward propagation and the same gradients during backpropagation, as they would all be parameterized exactly the same. In fact, the value 0 is not special here - in general we would run into the same issue if we initialized all the weights to the same value, regardless of what that value was.
+
+A better way to do things would be to initialize weights to random numbers via a zero-mean distribution. However, the variance chosen is important here: too high of a variance and your neuron activations will explode (if using e.g. ReLU) or saturate (if using e.g. sigmoid or tanh; recall that $f'(x) \approx 0$ for $|x| > 10$ when $f$ is the sigmoid or tanh function); too low of a variance and your neuron activations will approach uniformity (all zero for ReLU and tanh activations; all 0.5 for sigmoid since $\sigma(0) = 0.5$). The correct variance is not actually obvious from first principles, and depends heavily on the activation function. The paper ``On weight initialization in deep neural networks" (Kumar 2017) derives the ideal variances for sigmoid, tanh, and ReLU activations; they are:
+\begin{align*}
+&\frac{1}{\sqrt{N}} &\text{(tanh, \emph{Xavier initialization})}\\
+&\frac{\sqrt{12.8}}{\sqrt{N}} &\text{(sigmoid)}\\
+&\frac{2}{\sqrt{N}} &\text{(ReLU, \emph{He initialization})}
+\end{align*}
+where $N$ denotes the number of inputs into the neuron. (These are the ideal variances for the initializations of the weights in the transform from the previous layer to the current neuron, i.e. the neuron with $N$ inputs.)
+
+\subsection{Batch normalization}
+Batch normalization (Ioffe \& Szegedy, 2015) is a technique that actually reduces the need to get initialization just right. It operates on a per-neuron basis. Specifically, suppose there is a neuron in the network that outputs a value $y$, i.e. $y = f(x | w)$ where $x$ and $w$ represent the inputs and parameters, respectively, of the neuron. Batch normalization can be applied to the output of neuron, and in a mini-batch during training, it computes the value
+$$\hat{y} = \gamma \frac{y - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}} + \beta,$$
+where $\mu_B$ and $\sigma_B^2$ are the mean and variance, respectively, of $y$ over the mini-batch, $\gamma$ and $\beta$ are (per-neuron) learned parameters of the model, and $\epsilon$ is a positive-valued hyperparameter (it apparently improves stability, but its exact value doesn't seem to be too important; it doesn't get much screen time in the paper). Later neurons which would have taken $y$ as input are given $\hat{y}$ as input instead. 
+
+One important point about applying ``batch norm" to a CNN is that each filter is treated as a single neuron in a CNN, so that the batch-wise means and variances for a filter's output are calculated not only over every image in a batch, but also over every position in each image at which the filter is applied (so if there are $m$ images per mini-batch and a filter is applied at $k$ positions in each image, batch norm would calculate the mean and variance of the filter's output over a total of $m \cdot k$ values).
+
+During inference, the values $\mu_B$ and $\sigma_B^2$ are replaced with global means $\mu_y$ and $\sigma_y^2$ (as, obviously, during inference, there is no mini-batch).
+
+The benefits of batch norm include:
+\begin{itemize}
+\item It reduces the need to initialize the parameters of the model with the correct variances, as vanishing/exploding values are fixed by normalization. This is a bit more obvious if we remove $\gamma$ and $\beta$ in the equation for $\hat{y}$ - it then becomes just a fairly standard zero-mean and unit-variance normalization. (The reason that $\gamma$ and $\beta$ are included is because normalizing everything to zero mean and unit variance may not always be ideal, since some activation functions, like sigmoid and tanh, are largely linear in those input domains.)
+\begin{itemize}
+\item For the same reason, batch norm allows us to use higher learning rates - the normalization reduces the risk of gradient explosions that would normally come with higher learning rates.
+\end{itemize}
+\item It speeds up model convergence. The authors explain that this is because it reduces \emph{covariate shift} in the inputs to intermediate layers in the model (covariate shift is when the inputs to a model undergo a change in their distribution). The intermediate layers of the model will normally see covariate shift because shifts in the weights of one layer (due to gradient updates) will cause the distributions of inputs to all subsequent layers to shift as well. However, batch norm solves this problem by normalizing the means and variances of all the outputs.
+\item Because normalization statistics are computed per mini-batch during training, the model will not always see identical representations of the same input each time it appears, as that representation will depend on the other examples in the mini-batch. This has a regularizing effect on the model, and the authors have observed in some cases that batch norm makes Dropout unnecessary.
+\end{itemize}
+The details behind why batch normalization works and the motivations behind the various decisions made in its formulation can be found in the original paper.
+
+\subsection{Babysitting the learning process}
+When training a model for the first time, there are a few sanity checks you can do to make sure that your implementation doesn't have any obvious issues:
+\begin{itemize}
+\item Set your regularization hyperparameters to zero, initialize your model randomly, and make sure that your loss matches what it should be for a totally random predictor. For example, if you are using softmax loss to classify images into 10 categories, your loss (per training example) should be roughly equal to $-\ln(0.1) \approx 2.30$ after randomly initializing the model and before doing any training, assuming you have zeroed out any regularization terms in the loss function.
+\item Then, adding the regularization term back to the loss, do the same thing, and verify that your loss is higher than before.
+\item Now, with regularization off again, initialize your model and train it on a very small training set (say, 10-100 examples or so). The model should be able to fit the training set perfectly; if not, there is probably a bug preventing it from updating properly.
+\end{itemize}
+Once the sanity checks are complete, you can start to train your model for real. The first step typically involves tuning your learning rate. 
+\begin{itemize}
+\item If you see that your loss is not changing, your learning rate is likely too small.
+\item If you see that your loss is increasing and/or going to NaN, your learning rate is probably too big.
+\item In practice, a learning rate between $10^{-5}$ and $10^{-3}$ usually works well.
+\end{itemize}
+These issues could also be caused by bad initialization, but if you're using batch norm and Xavier initialization for tanh activation/He initialization for ReLU activation, your issues are unlikely to be coming from initialization.
+
+\subsection{Hyperparameter tuning}
+A few assorted tips for hyperparameter tuning:
+\begin{itemize}
+\item It's generally good to tune hyperparameters in two stages: a ``coarse" stage where we find what hyperparameter values allow the model to train normally (i.e. the loss goes down at a reasonable pace and doesn't explode), followed by a ``fine" stage where we find the exact hyperparameter values within the ``working" range that give the best possible model performance.
+\begin{itemize}
+\item During the coarse stage, we can improve efficiency by stopping model training early if we observe that the loss explodes (exceeds, say, 3x the original loss). During the fine stage it's better to train models to the end to get an accurate observation of the overall effects.
+\item If, after the fine stage, we see that the best hyperparameter settings are clustered around the edge of the value range of one of our hyperparameters, it can be good to try some more values of that hyperparameter past the range.
+\end{itemize}
+\item Selecting hyperparameter values randomly within our ``working range" is likely better than searching over a strict grid, as a grid search limits the number of distinct values of each hyperparameter in our search. For example, if we have two hyperparameters and have the compute budget to search over 9 different settings, it's more efficient to search somewhat randomly and allow each hyperparameter to take 9 distinct values than to select 3 distinct values for each hyperparameter and only test the $3 \times 3 = 9$ combinations afforded by those values.
+\item If training accuracy is much better than cross-validation accuracy, the model is probably overfitting and likely needs stronger regularization. If training accuracy and cross-validation accuracy are the same (or cross-validation accuracy is somehow better), we can probably either reduce the strength of the regularization or increase the capacity of our model (i.e. the size, as in the width (the size of each layer) or the depth (the number of layers)).
+\item If the loss is largely flat at the start of training, then suddenly starts to drop quickly after training for a while, the model was probably initialized poorly (maybe bad luck, maybe bad initialization parameters).
+\item As a rule of thumb, each update to a weight should be changing its value by around $\pm 0.1\%$. Much more or less than that may indicate that the learning rate is bad, and that the model will either be slow to converge or unstable.
+\end{itemize}
