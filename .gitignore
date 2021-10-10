@@ -5,3 +5,4 @@
 staging.*
 *.pyc
 *.npy
+**/.ipynb_checkpoints/**
