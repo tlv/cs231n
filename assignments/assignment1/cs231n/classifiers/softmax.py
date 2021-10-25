@@ -31,7 +31,30 @@ def softmax_loss_naive(W, X, y, reg):
     # here, it is easy to run into numeric instability. Don't forget the        #
     # regularization!                                                           #
     #############################################################################
-    pass
+    D = W.shape[0]
+    C = W.shape[1]
+    N = X.shape[0]
+
+    raw_scores = X.dot(W)
+    # doesn't affect softmax calculation, but stops overflow
+    raw_scores -= np.max(raw_scores)
+    exp_scores = np.exp(raw_scores)
+    exp_totals = np.sum(exp_scores, axis=1)
+    for i in range(N):
+        correct_class = y[i]
+        correct_score = exp_scores[i][correct_class]
+        loss -= np.log(correct_score / exp_totals[i])
+
+        dW[:, correct_class] -= X[i]
+        for i_W in range(D):
+            for j_W in range(C):
+                dW[i_W][j_W] += X[i][i_W] * exp_scores[i][j_W] / exp_totals[i]
+
+    loss /= N
+    dW /= N
+
+    loss += reg * np.sum(W * W)
+    dW += 2 * reg * W
     #############################################################################
     #                          END OF YOUR CODE                                 #
     #############################################################################
@@ -55,7 +78,26 @@ def softmax_loss_vectorized(W, X, y, reg):
     # here, it is easy to run into numeric instability. Don't forget the        #
     # regularization!                                                           #
     #############################################################################
-    pass
+    N = X.shape[0]
+    C = W.shape[1]
+    raw_scores = X.dot(W)
+    # doesn't affect softmax calculation, but stops overflow
+    raw_scores -= np.max(raw_scores)
+    exp_scores = np.exp(raw_scores)
+    exp_totals = np.sum(exp_scores, axis=1)
+
+    correct_class_exp_score = exp_scores[np.arange(N), y]
+    correct_class_probs = correct_class_exp_score / exp_totals
+    loss -= np.sum(np.log(correct_class_probs)) / N
+    loss += reg * np.sum(W * W)
+
+    y_onehot = np.zeros((N, C))
+    y_onehot[np.arange(N), y] = 1.0
+    dW -= X.T.dot(y_onehot)
+    X_prop = X / exp_totals.reshape((N, 1))
+    dW += X_prop.T.dot(exp_scores)
+    dW /= N
+    dW += 2 * reg * W
     #############################################################################
     #                          END OF YOUR CODE                                 #
     #############################################################################
