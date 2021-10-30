@@ -94,8 +94,8 @@ def softmax_loss_vectorized(W, X, y, reg):
     y_onehot = np.zeros((N, C))
     y_onehot[np.arange(N), y] = 1.0
     dW -= X.T.dot(y_onehot)
-    X_prop = X / exp_totals.reshape((N, 1))
-    dW += X_prop.T.dot(exp_scores)
+    probs = exp_scores / exp_totals.reshape((N, 1))
+    dW += X.T.dot(probs)
     dW /= N
     dW += 2 * reg * W
     #############################################################################
