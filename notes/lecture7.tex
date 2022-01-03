@@ -1,0 +1,92 @@
+A quick note was made at the beginning of lecture on centering and normalizing input data: it's important to do it because it makes classification accuracy less sensitive to small perturbations in the parameters and decision boundary. As an example, suppose that we had a binary classification dataset with two input features $x_1$ and $x_2$ that could be perfectly separated by the line $x_1 = x_2$, and that the input space is roughly uniformly distributed across the unit disk. If we stretch everything out with the transformation $x_1' = 100x_1$, then the decision boundary becomes the line $x_1' = 100x_2$. But more importantly, a small rotation of the decision boundary could now affect overall accuracy by a ton, whereas it may not have affected accuracy much pre-transformation. When a model's performance (and, thus, likely loss as well) changes drastically in response to small changes in its parameters, the training process will have a much harder time converging.
+
+\subsection{Issues with stochastic gradient descent}
+Stochastic gradient descent usually works acceptably well on simple problems, but it suffers from a few common issues:
+\begin{itemize}
+\item When the partial derivatives of the loss are very large in one direction but very small in another (i.e. the loss changes quickly in one direction but slowly in another), SGD tends to zigzag across the ``steep" dimension and move very slowly across the ``shallow" dimension.
+\begin{itemize}
+\item More formally, one would say that the loss function has a high ``condition number" at the current point in the parameter space. This occurs when, among the singular values of the Hessian matrix of the loss function with respect to the parameters, the ratio between the largest and smallest is large.
+\item This is not unlikely in high-dimensional settings with 10s or 100s of millions of parameters!
+\end{itemize}
+\item SGD can easily get stuck in local minima (very rare) or saddle points, where the partial derivatives are all zero.
+\begin{itemize}
+\item See the paper ``Identifying and attacking the saddle point problem in high-dimensional non-convex optimization" (Dauphin et al. 2014) for the reasons why saddle points are much more common than local minima.
+\end{itemize}
+\item SGD is quite noisy and can take a while to converge since the gradient on each small minibatch often does not correlate that strongly with each other. Oftentimes the parameters take a jittery and meandering path toward the convergence point.
+\end{itemize}
+
+\subsection{Momentum}
+One method that can deal with all of these problems at once is called momentum. The most basic technique applying this concept is simply called ``SGD with momentum". In normal SGD, we perform the below update at each training step, with $W$ representing the parameters, $X$ representing a batch of training data, $L$ representing the loss, and $\alpha$ representing the learning rate:
+$$W \leftarrow W - \alpha \grad L(W, X).$$
+In SGD with momentum, we additionally maintain a velocity term $v$ (initialized to 0) and use it to update our parameters:
+\begin{align*}
+v &\leftarrow \rho v + \grad L(W, X)\\
+W &\leftarrow W - \alpha v
+\end{align*}
+Here $\rho$ is a hyperparameter; usually it is set to 0.9 or 0.99. Intuitively, what we are doing here is moving in the direction of a weighted average (with weights that exponentially decay over time) of all past minibatch gradients. This makes zigzags cancel out with each other, amplifies consistent small gradients in one direction, keeps us going if we hit a saddle point (or any other type of flat region), and makes the parameter update trajectory relatively smooth.
+
+There is another variant of momentum called Nesterov momentum. To understand its difference from the ``vanilla" momentum presented above, note that the above method first calculates a velocity by combining the previous velocity with the current gradient, and then performs a single update in the resulting direction. Nesterov momentum differs in that, conceptually, it first performs an update in the direction of the previous velocity, then recomputes the gradient (wih the updated params) and performs another update in the direction of the new gradient. Intuitively, this gives the gradient an opportunity to ``correct" the momentum term somewhat if it causes the parameters to move too far in an unhelpful direction or overshoot the convergence point, which can allow models to converge faster. Formally, the update operation proceeds as follows:
+\begin{align*}
+v &\leftarrow \rho v - \alpha \grad L(W + \rho v, X)\\
+W &\leftarrow W + v
+\end{align*}
+This formulation is somewhat inconvenient because it requires calculating the gradient and performing the update at different values of $W$. However, by reparameterizing $\tilde{W} = W + \rho v$, the equations then become
+\begin{align*}
+v &\leftarrow \rho v - \alpha \grad L(\tilde{W}, X)\\
+\tilde{W} &\leftarrow \tilde{W} + v + \rho(v - v_0),
+\end{align*}
+where $v_0$ refers to the ``old" value of $v$ (i.e. the $v$ on the right side of the first assignment equation).
+
+\subsection{Adagrad and RMSProp}
+Adagrad (``Adaptive Gradient") is different method for dealing with these issues. Instead of pushing movement in the direction of a relatively stable momentum vector, Adagrad attempts to normalize the elements of the gradient so that each parameter update makes roughly equal ``progress" on every parameter. Formally, the update operation proceeds as follows (copying the same variable definitions from earlier):
+\begin{align*}
+\nu &\leftarrow \nu + (\grad L(W, X))^2\\
+W &\leftarrow W - \frac{\alpha}{\sqrt{\nu} + \epsilon} \grad L(W, X).
+\end{align*}
+As with $v$ before, here $\nu$ is initialized to 0. Here vector multiplications are elementwise, and operations between vectors and scalars are broadcasted elementwise. Also, $\epsilon$ is a hyperparameter, usually set to $10^{-7}$, whose purpose is to prevent division by zero; its exact value doesn't usually impact things much. The impact of the division by $\sqrt{\nu}$ is that step sizes in directions with large gradients are reduced, and step sizes in directions with small gradients are amplified, which is how Adagrad achieves similar rates of progress on each parameter during training.
+
+One problem with Adagrad, however, is that $\nu$ can only grow over time, and step sizes are (roughly) proportional to $1/\nu$. While this might not be such a bad thing - we should probably be reducing our step sizes as we train for more steps and get closer to the convergence point - in practice this causes Adagrad to often get stuck around saddle points. A similar algorithm called RMSProp (``Root Mean Squared Propagation") gets around this issue by introducing an exponential decay into $\nu$:
+\begin{align*}
+\nu &\leftarrow \rho\nu + (1 - \rho)(\grad L(W, X))^2\\
+W &\leftarrow W - \frac{\alpha}{\sqrt{\nu} + \epsilon} \grad L(W, X).
+\end{align*}
+In practice, Adagrad is almost never used, and RMSProp is favored instead.
+
+\subsection{Adam}
+Adam is an optimization algorithm that essentially combines the principles of both momentum and Adagrad/RMSProp. The update step proceeds as follows (elementwise vector arithmetic, broadcasted scalar-vector arithmetic):
+\begin{align*}
+m_1 &\leftarrow \beta_1 m_1 + (1 - \beta_1) \grad L(W, X) \\
+m_2 &\leftarrow \beta_2 m_2 + (1  - \beta_2) (\grad L(W, X))^2 \\
+m_1' &\leftarrow m_1/(1 - \beta_1^t) \\
+m_2' &\leftarrow m_2/(1 - \beta_2^t) \\
+W &\leftarrow W - \frac{\alpha m_1'}{\sqrt{m_2'} + \epsilon}
+\end{align*}
+Here $\beta_1$ and $\beta_2$ are hyperparameters analogous to $\rho$ from momentum and RMSProp (respectively) and $\epsilon$ is analogous to $\epsilon$ from RMSProp. One notable difference about Adam is the construction and usage of $m_1'$ and $m_2'$; the theoretical reasoning can be found in the paper (Kingma \& Ba 2015), but the practical outcome of this is that the magnitudes of the initial update steps are kept reasonable - since $\beta_2$ is usually set very close to 1, $m_2$ will be very small initially, which would make a division of something by $\sqrt{m_2}$ potentially very large.
+
+In practice, using Adam with $\beta_1 = 0.9, \beta_2 = 0.999, \alpha \in \{5\times 10^{-4}, 1\times 10^{-3}\}$ tends to work well for most problems.
+
+\subsection{Other optimization techniques}
+One interesting optimization algorithm relies on the idea of quadratic approximation. All the algorithms discussed thus far rely on linear approximation - we create a linear approximation of the loss function (using the gradient) and move a little bit in a direction that minimizes it. With a quadratic approximation, we can move directly to the minimum of the approximation!
+
+The naive application of this idea is called Newton's method, but it doesn't work very well in practice since it requires calculating the Hessian matrix (matrix of second derivatives) of the loss function, which has size $N \times N$ ($N$ being the number of trainable parameters of the model), and then inverting it (an $O(N^3)$ operation). When $N$ is much more than $10^6$, this is clearly impractical. BFGS and L-BFGS are popular approximations of Newton's method that are far more reasonable in terms of their resource consumption, but it turns out they just don't work that well in practice when faced with stochastic/non-convex settings (like training neural networks on complex datasets), so people don't tend to use them much.
+
+Another popular optimization technique orthogonal to the optimization algorithms discussed thus far is learning rate decay - basically, adjusting the learning rate (usually decreasing it) over time during training. This makes intuitive sense - in general, learning rate tends to be a highly impactful hyperparameter, and there's no reason why the best value of $\alpha$ should be constant throughout the entire training process. There isn't a single best decay schedule that works in all settings; people tend to just try a bunch of things (periodic step function decay, logistic/exponential decay, cosine ``decay", etc.) and see what works. As a brief note: tuning the decay schedule is like tuning a hyperparameter, but it's typically done after tuning the learning rate rather than done concurrently with it.
+
+\subsection{How do we actually get good test results?}
+All of the previous techniques discussed in this lecture focus on minimizing our training loss, but recall that our true goal is to optimize our results at test time on unseen data. One of the simplest and most reliable ways to improve test results is ensembling - essentially, training multiple models and combining (e.g. by averaging or majority vote) their results. An interesting way to do this is to simply ensemble multiple snapshots of a single model (from when it is being trained) rather than actually retraining the model several times, and research has been done into how best to actually do this (e.g. Huang et al. 2017).
+
+To improve single-model test perormance, however, we usually turn to regularization. A common pattern of regularization is that we introduce some amount of randomness during training time (to prevent overfitting and force generalization) and average out the randomness at test time. Popular regularization techniques include:
+\begin{itemize}
+\item Dropout (Baldi 2013 is a good explainer). This technique involves randomly setting neurons' outputs to zero (``drop them out") during training with some predetermined probability $p$. During test time, outputs are not dropped, but are scaled by a factor of $p$ so that the sum of the inputs to each neuron remains similar in magnitude.
+\item Data augmentation is especially common for image processing models - basically, during training time, instead of just training on the original images, apply random crops, scales, flips, rotations, and (sometimes) color jitter to them.
+\item Batch norm (Ioffe \& Szegedy 2015, also see Lecture 6 notes)
+\end{itemize}
+More exotic techniques include:
+\begin{itemize}
+\item DropConnect (Wan et al. 2013) is similar to Dropout, but instead of randomly zeroing neuron activations, it randomly zeroes model weights.
+\item Fractional max pooling (Graham 2014)
+\item Stochastic depth (Huang et al 2016)
+\end{itemize}
+
+\subsection{Transfer learning}
+Another problem we must commonly deal with is a lack of training data - while images are plentiful, well-labeled images are not, and training a high-quality CNN from scratch requires millions of well-labeled images. However, we can get around this problem with transfer learning: we can take a model that has been trained on ImageNet, replace its last layer (which predicts the most likely ImageNet class) with something that predicts the result that we are interested in, and then train only the last layer of the model on our data while keeping the rest of the model frozen. This actually tends to work quite well for many applications where training data is limited (e.g. X-ray image reading). If you have enough data, you can also unfreeze more layers of the model and finetune those as well (quick note: typically it's good to use a lower learning rate during fine-tuning, since the pre-trained model will usually have reasonable parameter values already).
